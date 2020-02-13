@@ -1,39 +1,39 @@
 <template>
-<div id="container">
-      <JqxKnob
-        ref="myKnob"
-        @change="onChange($event)"
+  <div id="container">
+    <JqxKnob
+      ref="myKnob"
+      @change="onChange($event)"
+      :value="value"
+      :min="0"
+      :max="10"
+      :startAngle="120"
+      :endAngle="420"
+      :snapToStep="true"
+      :rotation="'clockwise'"
+      :style="style"
+      :marks="marks"
+      :labels="labels"
+      :progressBar="progressBar"
+      :pointer="pointer"
+    ></JqxKnob>
+
+    <div id="inputField">
+      <JqxNumberInput
+        ref="myNumberInput"
+        @mousedown="onMouseDown($event)"
+        @keyup="onKeyup()"
+        @valueChanged="onValueChanged()"
+        :width="60"
+        :height="40"
         :value="value"
         :min="0"
         :max="10"
-        :startAngle="120"
-        :endAngle="420"
-        :snapToStep="true"
-        :rotation="'clockwise'"
-        :style="style"
-        :marks="marks"
-        :labels="labels"
-        :progressBar="progressBar"
-        :pointer="pointer"
-      ></JqxKnob>
-
-      <div id="inputField">
-        <JqxNumberInput
-          ref="myNumberInput"
-          @mousedown="onMouseDown($event)"
-          @keyup="onKeyup()"
-          @valueChanged="onValueChanged()"
-          :width="60"
-          :height="40"
-          :value="value"
-          :min="0"
-          :max="10"
-          :textAlign="'center'"
-          :decimalDigits="0"
-          :inputMode="'simple'"
-        ></JqxNumberInput>
-      </div>
+        :textAlign="'center'"
+        :decimalDigits="0"
+        :inputMode="'simple'"
+      ></JqxNumberInput>
     </div>
+  </div>
 </template>
 <script>
 import JqxKnob from "jqwidgets-scripts/jqwidgets-vue/vue_jqxknob.vue";
@@ -45,8 +45,8 @@ export default {
     JqxKnob,
     JqxNumberInput
   },
-  props: ['value'],
- 
+  props: ["value"],
+
   data: function() {
     return {
       style: {
@@ -76,11 +76,11 @@ export default {
       labels: {
         offset: "88%",
         step: 1,
-        visible: true,
+        visible: true
         // style: { fill: "#00a4e1"}
       },
       progressBar: {
-        style: { fill: "#447384",  stroke: "white" },
+        style: { fill: "#447384", stroke: "white" },
         size: "9%",
         offset: "60%",
         background: { fill: "grey", stroke: "grey" }
@@ -102,21 +102,19 @@ export default {
         size: "10%",
         offset: "49%"
       }
-     
     };
   },
   methods: {
     onChange: function(event) {
-        console.log(event);
+      console.log(event);
       if (
         event.args.changeSource == "propertyChange" ||
-        event.args.changeSource == "val" 
+        event.args.changeSource == "val"
       ) {
         return;
       }
       this.$refs.myNumberInput.val(event.args.value);
-      if (event.args.type !== null)
-        this.$emit('input', event.args.value);
+      if (event.args.type !== null) this.$emit("input", event.args.value);
     },
     onMouseDown: function(event) {
       event.stopPropagation();
@@ -131,13 +129,12 @@ export default {
     }
   },
   watch: {
-      value : function(newVal, oldVal){
-          if(newVal != oldVal){
+    value: function(newVal, oldVal) {
+      if (newVal != oldVal) {
         //      console.log("watcher");
-          this.$refs.myKnob.val(newVal);
-
-          }
+        this.$refs.myKnob.val(newVal);
       }
+    }
   }
 };
 </script>
