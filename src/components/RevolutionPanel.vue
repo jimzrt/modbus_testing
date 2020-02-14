@@ -12,8 +12,8 @@
       :colorScheme="'scheme05'"
       :animationDuration="500"
       :max="20"
+      :height="300"
     ></JqxGauge>
-    {{ value }} - {{ revPerMinute }} U/min
   </div>
 </template>
 <script>
@@ -25,31 +25,26 @@ export default {
   props: ["value"],
   watch: {
     value: function(newVal, oldVal) {
+      console.log(newVal, oldVal);
       if (oldVal == 0) {
         this.previousTimeStamp = new Date();
         return;
       }
-      if (newVal !== oldVal) {
-        let currentDate = new Date();
-        let sBetween = Math.ceil(currentDate - this.previousTimeStamp);
-        let revBetween = newVal - oldVal;
-        let revPerMinuteFull = (revBetween / sBetween) * 60000;
-        this.revPerMinute = revPerMinuteFull.toFixed(2);
-        this.previousTimeStamp = currentDate;
-        this.$refs.gauge.caption = {
-          value: this.revPerMinute + " U/min",
-          position: "bottom",
-          offset: [0, 20],
-          visible: true
-        };
-        this.$refs.gauge.value = revPerMinuteFull;
-        //
 
-        //   this.$refs.gauge.caption("test")
-        //this.$set(this.$refs.gauge.caption, 'value', 'test')
-        // Object.assign({}, this.$refs.gauge.caption,captain);
-        // this.$refs.gauge.$forceUpdate()
-      }
+      let currentDate = new Date();
+      let sBetween = Math.ceil(currentDate - this.previousTimeStamp);
+      let revBetween = newVal - oldVal;
+      let revPerMinuteFull = (revBetween / sBetween) * 60000;
+      this.$refs.gauge.value = revPerMinuteFull;
+      this.revPerMinute = revPerMinuteFull.toFixed(2);
+
+      this.previousTimeStamp = new Date();
+      this.$refs.gauge.caption = {
+        value: this.revPerMinute + " U/min",
+        position: "bottom",
+        offset: [0, 20],
+        visible: true
+      };
     }
   },
   data: function() {
@@ -109,7 +104,18 @@ export default {
       }
     };
   },
-  computed: {
+  methods: {
+    reset: function() {
+      this.revPerMinute = 0;
+      this.$refs.gauge.value = 0;
+      this.previousTimeStamp = new Date();
+      this.$refs.gauge.caption = {
+        value: this.revPerMinute + " U/min",
+        position: "bottom",
+        offset: [0, 20],
+        visible: true
+      };
+    }
     //   gaugeCaption: function(){
     //      return { value: this.revPerMinute  + " U/min", position: 'bottom', offset: [0, 10], visible: true }
     //   }

@@ -15,6 +15,7 @@
       :labels="labels"
       :progressBar="progressBar"
       :pointer="pointer"
+      :height="300"
     ></JqxKnob>
 
     <div id="inputField">
@@ -106,7 +107,7 @@ export default {
   },
   methods: {
     onChange: function(event) {
-      console.log(event);
+      //(event);
       if (
         event.args.changeSource == "propertyChange" ||
         event.args.changeSource == "val"

@@ -1,65 +1,103 @@
+const path = require('path')
 var app = require('express')();
 var http = require('http').createServer(app);
 var io = require('socket.io')(http);
+//const sqlite3 = require('sqlite3').verbose()
+const Database = require('better-sqlite3');
 const Modbus = require('jsmodbus')
 const net = require('net')
-const socket = new net.Socket()
-const client = new Modbus.client.TCP(socket)
+const modbusSocket = new net.Socket()
+const client = new Modbus.client.TCP(modbusSocket)
 const options = {
     'host': '192.168.0.250',
     'port': '502'
 }
-let firstConnect = true;
+
+io.set('heartbeat timeout', 60000);
+io.set('heartbeat interval', 25000);
+
+const dbPath = path.resolve(__dirname, 'events.db')
+const db = new Database(dbPath, {
+    verbose: console.log
+});
+
+// let db = new sqlite3.Database(dbPath, (err) => {
+//   if (err) {
+//     console.error(err);
+//     return;
+//   }
+//   console.log('Connected to database.');
+// });
+
+db.prepare('CREATE TABLE IF NOT EXISTS revolutions (revolutions INTEGER, timestamp TEXT)').run()
+db.prepare('CREATE TABLE IF NOT EXISTS motor (state BOOLEAN, timestamp TEXT)').run()
+db.prepare('CREATE TABLE IF NOT EXISTS speed (speed INTEGER, timestamp TEXT)').run()
+
+const dbRevolutionInsert = db.prepare('INSERT INTO revolutions (revolutions, timestamp) VALUES (?, ?)');
+const dbMotorInsert = db.prepare('INSERT INTO motor (state, timestamp) VALUES (?, ?)');
+const dbSpeedInsert = db.prepare('INSERT INTO speed (speed, timestamp) VALUES (?, ?)');
+const dbRevolutionQuery = db.prepare('SELECT revolutions, timestamp FROM revolutions');
+const dbMotorQuery = db.prepare('SELECT state, timestamp FROM motor');
+const dbSpeedQuery = db.prepare('SELECT speed, timestamp FROM speed');
+
 
 let revolutions = 0;
 let speed = 0;
 let turnedOn = 0;
 
-io.on('connection', function (socket) {
-    console.log('a user connected');
-    console.log({
-        "revolutions": revolutions,
-        "speed": speed,
-        "turnedOn": turnedOn
-    })
+async function sendEventsToClients() {
+    io.emit("revolutionsDB", dbRevolutionQuery.all());
+    io.emit("motorDB", dbMotorQuery.all());
+    io.emit("speedDB", dbSpeedQuery.all())
+
+}
+
+async function update() {
+    revolutions = await getRevolutions()
+    turnedOn = await isTurnedOn();
+    speed = await getSpeed()
+    dbRevolutionInsert.run(revolutions, new Date().toISOString())
+    dbMotorInsert.run(turnedOn ? 1 : 0, new Date().toISOString())
+    dbSpeedInsert.run(speed, new Date().toISOString())
 
     io.emit("init", {
         "revolutions": revolutions,
         "speed": speed,
         "turnedOn": turnedOn
     });
+}
 
-    socket.on("turnOn", function () {
+
+io.on('connection', async function (ioSocket) {
+    console.log('a user connected');
+    console.log({
+        "revolutions": revolutions,
+        "speed": speed,
+        "turnedOn": turnedOn
+    })
+    await sendEventsToClients();
+    await update();
+
+
+    ioSocket.on("turnOn", async function () {
         console.log("turning on");
         turnOn();
-        turnedOn = 1;
-        io.emit("init", {
-            "revolutions": revolutions,
-            "speed": speed,
-            "turnedOn": turnedOn
-        });
+        //turnedOn = 1;
+        update();
     })
 
-    socket.on("turnOff", function () {
+    ioSocket.on("turnOff", async function () {
         console.log("turning off");
         turnOff();
-        turnedOn = 0;
-        io.emit("init", {
-            "revolutions": revolutions,
-            "speed": speed,
-            "turnedOn": turnedOn
-        });
+        //turnedOn = 0;
+        update();
     })
 
-    socket.on("setSpeed", function (newSpeed) {
+    ioSocket.on("setSpeed", async function (newSpeed) {
         console.log("setting speed: " + newSpeed)
         setSpeed(newSpeed)
-        speed = newSpeed;
-        io.emit("init", {
-            "revolutions": revolutions,
-            "speed": speed,
-            "turnedOn": turnedOn
-        });
+        // speed = newSpeed;
+        update();
     })
 
 });
@@ -68,36 +106,35 @@ io.on('connection', function (socket) {
 
 
 
-socket.on('connect', async function () {
-    if (firstConnect) {
-        console.log("connected!!");
-        firstConnect = false;
-    } else {
-        console.log("reconnected!!");
-    }
+modbusSocket.on('connect', async function () {
 
-    this.revolutions = await getRevolutions()
-    this.speed = await getSpeed()
-    this.turnedOn = await isTurnedOn();
+    await update();
     console.log({
-        "revolutions": this.revolutions,
-        "speed": this.speed,
-        "turnedOn": this.turnedOn
+        "revolutions": revolutions,
+        "speed": speed,
+        "turnedOn": turnedOn
     })
-    io.emit("init", {
-        "revolutions": this.revolutions,
-        "speed": this.speed,
-        "turnedOn": this.turnedOn
-    });
+
+
 
     while (true) {
         //console.log("still here");
         //await setSpeed(2)
         //await turnOff()
-        this.revolutions = await getRevolutions()
-        io.emit("revolutions", {
-            "revolutions": this.revolutions
-        });
+        let newRevoulutions = await getRevolutions()
+        if (newRevoulutions !== revolutions) {
+            update()
+            // db.run(`INSERT INTO revolutions(revolutions, timestamp) VALUES(?, ?)`, [revolutions, new Date().toISOString()], function(err) {
+            //     if (err) {
+            //       return console.log(err.message);
+            //     }
+            //   });
+            // revolutions = newRevoulutions
+            // io.emit("revolutions", {
+            //     "revolutions": revolutions
+            // });
+        }
+
         //     console.log({"revolutions" : this.revolutions, "speed": this.speed, "turnedOn": this.turnedOn})
 
         // speed = await getSpeed()
@@ -113,13 +150,13 @@ socket.on('connect', async function () {
 
 
 
-socket.on('error', console.error)
-socket.on('close', function () {
+modbusSocket.on('error', console.error)
+modbusSocket.on('close', function () {
     console.log("connection closed");
-    socket.connect(options)
+    modbusSocket.connect(options)
 })
-socket.connect(options);
-socket.on('timeout', function () {
+modbusSocket.connect(options);
+modbusSocket.on('timeout', function () {
     console.log("timeout!!");
 });
 
@@ -139,18 +176,18 @@ async function setSpeed(speed) {
 
 
 async function getSpeed() {
-    result = await client.readInputRegisters(768, 1);
-    speed = result.response.body.values[0];
+    let result = await client.readInputRegisters(768, 1);
+    let speed = result.response.body.values[0];
     return speed
 }
 async function getRevolutions() {
-    result = await client.readInputRegisters(256, 1);
-    revolutions = result.response.body.values[0];
+    let result = await client.readInputRegisters(256, 1);
+    let revolutions = result.response.body.values[0];
     return revolutions;
 }
 async function isTurnedOn() {
-    result = await client.readCoils(8224, 1);
-    turnedOn = result.response.body.values[0] == 1;
+    let result = await client.readCoils(8224, 1);
+    let turnedOn = result.response.body.values[0] == 1;
     return turnedOn;
 }
 
