@@ -18,33 +18,17 @@
       :height="300"
     ></JqxKnob>
 
-    <div id="inputField">
-      <JqxNumberInput
-        ref="myNumberInput"
-        @mousedown="onMouseDown($event)"
-        @keyup="onKeyup()"
-        @valueChanged="onValueChanged()"
-        :width="60"
-        :height="40"
-        :value="value"
-        :min="0"
-        :max="10"
-        :textAlign="'center'"
-        :decimalDigits="0"
-        :inputMode="'simple'"
-      ></JqxNumberInput>
-    </div>
   </div>
 </template>
 <script>
 import JqxKnob from "jqwidgets-scripts/jqwidgets-vue/vue_jqxknob.vue";
-import JqxNumberInput from "jqwidgets-scripts/jqwidgets-vue/vue_jqxnumberinput.vue";
+//import JqxNumberInput from "jqwidgets-scripts/jqwidgets-vue/vue_jqxnumberinput.vue";
 
 export default {
   name: "SuperKnob",
   components: {
     JqxKnob,
-    JqxNumberInput
+  //  JqxNumberInput
   },
   props: ["value"],
 
@@ -114,20 +98,20 @@ export default {
       ) {
         return;
       }
-      this.$refs.myNumberInput.val(event.args.value);
+     // this.$refs.myNumberInput.val(event.args.value);
       if (event.args.type !== null) this.$emit("input", event.args.value);
     },
     onMouseDown: function(event) {
       event.stopPropagation();
     },
-    onKeyup: function() {
-      let val = this.$refs.myNumberInput.val();
-      this.$refs.myKnob.val(val);
-    },
-    onValueChanged: function() {
-      let val = this.$refs.myNumberInput.val();
-      this.$refs.myKnob.val(val);
-    }
+    // onKeyup: function() {
+    //   let val = this.$refs.myNumberInput.val();
+    //   this.$refs.myKnob.val(val);
+    // },
+    // onValueChanged: function() {
+    //   let val = this.$refs.myNumberInput.val();
+    //   this.$refs.myKnob.val(val);
+    // }
   },
   watch: {
     value: function(newVal, oldVal) {
@@ -141,17 +125,17 @@ export default {
 </script>
 
 <style>
-#container {
+/* #container {
   position: relative;
-}
+} */
 
-.jqx-numberinput {
+/* .jqx-numberinput {
   left: 170px;
   top: 323px;
   position: absolute;
   background: transparent !important;
   border: none !important;
-}
+} */
 
 text.jqx-knob-label {
   font-size: 20px;
@@ -159,9 +143,9 @@ text.jqx-knob-label {
   color: grey !important;
 }
 
-.jqx-numberinput > input {
+/* .jqx-numberinput > input {
   background: transparent !important;
   font-size: 20px !important;
   color: black !important;
-}
+} */
 </style>

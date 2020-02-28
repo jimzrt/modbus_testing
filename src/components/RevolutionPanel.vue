@@ -25,7 +25,6 @@ export default {
   props: ["value"],
   watch: {
     value: function(newVal, oldVal) {
-      console.log(newVal, oldVal);
       if (oldVal == 0) {
         this.previousTimeStamp = new Date();
         return;
@@ -35,16 +34,18 @@ export default {
       let sBetween = Math.ceil(currentDate - this.previousTimeStamp);
       let revBetween = newVal - oldVal;
       let revPerMinuteFull = (revBetween / sBetween) * 60000;
-      this.$refs.gauge.value = revPerMinuteFull;
+     
       this.revPerMinute = revPerMinuteFull.toFixed(2);
-
-      this.previousTimeStamp = new Date();
       this.$refs.gauge.caption = {
         value: this.revPerMinute + " U/min",
         position: "bottom",
         offset: [0, 20],
         visible: true
       };
+       this.$refs.gauge.value = revPerMinuteFull;
+       // this.$refs.gauge.jqxGauge('setValue', revPerMinuteFull);
+      this.previousTimeStamp = new Date();
+      
     }
   },
   data: function() {

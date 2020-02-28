@@ -21,6 +21,7 @@ const db = new Database(dbPath, {
     verbose: console.log
 });
 
+var connected = false;
 // let db = new sqlite3.Database(dbPath, (err) => {
 //   if (err) {
 //     console.error(err);
@@ -36,30 +37,84 @@ db.prepare('CREATE TABLE IF NOT EXISTS speed (speed INTEGER, timestamp TEXT)').r
 const dbRevolutionInsert = db.prepare('INSERT INTO revolutions (revolutions, timestamp) VALUES (?, ?)');
 const dbMotorInsert = db.prepare('INSERT INTO motor (state, timestamp) VALUES (?, ?)');
 const dbSpeedInsert = db.prepare('INSERT INTO speed (speed, timestamp) VALUES (?, ?)');
-const dbRevolutionQuery = db.prepare('SELECT revolutions, timestamp FROM revolutions');
-const dbMotorQuery = db.prepare('SELECT state, timestamp FROM motor');
-const dbSpeedQuery = db.prepare('SELECT speed, timestamp FROM speed');
+const dbRevolutionQuery = db.prepare("SELECT revolutions, timestamp FROM revolutions where timestamp >= ?");
+const dbMotorQuery = db.prepare("SELECT state, timestamp FROM motor where timestamp >= ?");
+const dbSpeedQuery = db.prepare("SELECT speed, timestamp FROM speed where timestamp >= ?");
 
 
 let revolutions = 0;
 let speed = 0;
-let turnedOn = 0;
+let turnedOn = false;
+let lastUpdate = new Date()
 
-async function sendEventsToClients() {
-    io.emit("revolutionsDB", dbRevolutionQuery.all());
-    io.emit("motorDB", dbMotorQuery.all());
-    io.emit("speedDB", dbSpeedQuery.all())
+let pause = false;
+
+function sendEventsToClients(ioSocket) {
+    let date = new Date();
+    date.setHours(date.getHours() - 1);
+    ioSocket.emit("revolutionsDB", dbRevolutionQuery.all(date.toISOString()));
+    ioSocket.emit("motorDB", dbMotorQuery.all(date.toISOString()));
+    ioSocket.emit("speedDB", dbSpeedQuery.all(date.toISOString()))
 
 }
 
-async function update() {
+async function update(io) {
+    let changed = false;
+    let oldRevolutions = revolutions;
     revolutions = await getRevolutions()
+    let oldTurnedOn = turnedOn;
     turnedOn = await isTurnedOn();
+    let oldSpeed = speed;
     speed = await getSpeed()
-    dbRevolutionInsert.run(revolutions, new Date().toISOString())
-    dbMotorInsert.run(turnedOn ? 1 : 0, new Date().toISOString())
-    dbSpeedInsert.run(speed, new Date().toISOString())
+    if (oldRevolutions !== revolutions && !changed) {
+        //       dbRevolutionInsert.run(oldRevolutions, new Date().toISOString())
+        dbRevolutionInsert.run(revolutions, new Date().toISOString())
+        dbMotorInsert.run(turnedOn ? 1 : 0, new Date().toISOString())
+        dbSpeedInsert.run(speed, new Date().toISOString())
+        changed = true;
+        lastUpdate = new Date()
+    }
 
+    if (oldTurnedOn !== turnedOn && !changed) {
+        //        dbMotorInsert.run(oldTurnedOn ? 1 : 0, new Date().toISOString())
+        dbRevolutionInsert.run(revolutions, new Date().toISOString())
+        dbMotorInsert.run(turnedOn ? 1 : 0, new Date().toISOString())
+        dbSpeedInsert.run(speed, new Date().toISOString())
+        changed = true;
+        lastUpdate = new Date()
+    }
+
+    if (oldSpeed !== speed && !changed) {
+        //       dbSpeedInsert.run(oldSpeed, new Date().toISOString())
+        dbRevolutionInsert.run(revolutions, new Date().toISOString())
+        dbMotorInsert.run(turnedOn ? 1 : 0, new Date().toISOString())
+        dbSpeedInsert.run(speed, new Date().toISOString())
+        changed = true;
+        lastUpdate = new Date()
+    }
+
+    if (!changed) {
+
+        let diff = Math.abs(lastUpdate - new Date());
+        if (diff > 1000 * 60 * 5) {
+            dbRevolutionInsert.run(revolutions, new Date().toISOString())
+            dbMotorInsert.run(turnedOn ? 1 : 0, new Date().toISOString())
+            dbSpeedInsert.run(speed, new Date().toISOString())
+            changed = true;
+            lastUpdate = new Date()
+        }
+
+    }
+    // dbRevolutionInsert.run(revolutions, new Date().toISOString())
+    // dbMotorInsert.run(turnedOn ? 1 : 0, new Date().toISOString())
+    // dbSpeedInsert.run(speed, new Date().toISOString())
+    // if(change){
+    //     io.emit("init", {
+    //         "revolutions": oldRevolutions,
+    //         "speed": oldSpeed,
+    //         "turnedOn": oldTurnedOn
+    //     });
+    // }
     io.emit("init", {
         "revolutions": revolutions,
         "speed": speed,
@@ -69,35 +124,38 @@ async function update() {
 
 
 io.on('connection', async function (ioSocket) {
+    while (!connected) {
+        await sleep(1000);
+    }
     console.log('a user connected');
     console.log({
         "revolutions": revolutions,
         "speed": speed,
         "turnedOn": turnedOn
     })
-    await sendEventsToClients();
-    await update();
+    sendEventsToClients(ioSocket);
+    await update(ioSocket);
 
 
     ioSocket.on("turnOn", async function () {
         console.log("turning on");
-        turnOn();
+        await turnOn();
         //turnedOn = 1;
-        update();
+        await update(io);
     })
 
     ioSocket.on("turnOff", async function () {
         console.log("turning off");
-        turnOff();
+        await turnOff();
         //turnedOn = 0;
-        update();
+        await update(io);
     })
 
     ioSocket.on("setSpeed", async function (newSpeed) {
         console.log("setting speed: " + newSpeed)
-        setSpeed(newSpeed)
+        await setSpeed(newSpeed)
         // speed = newSpeed;
-        update();
+        await update(io);
     })
 
 });
@@ -108,32 +166,54 @@ io.on('connection', async function (ioSocket) {
 
 modbusSocket.on('connect', async function () {
 
-    await update();
+    connected = true;
+
+    //await update();
     console.log({
         "revolutions": revolutions,
         "speed": speed,
         "turnedOn": turnedOn
     })
 
-
+    let oldSpeed = speed;
 
     while (true) {
+
+        if (turnedOn) {
+            let currentMinutes = new Date().getMinutes();
+
+            if (!pause && currentMinutes < 20) {
+                pause = true;
+                oldSpeed = speed;
+                await setSpeed(0);
+                // update();
+            }
+
+            if (pause && currentMinutes >= 20) {
+                pause = false;
+                await setSpeed(oldSpeed);
+                // update();
+            }
+
+
+        }
+
         //console.log("still here");
         //await setSpeed(2)
         //await turnOff()
-        let newRevoulutions = await getRevolutions()
-        if (newRevoulutions !== revolutions) {
-            update()
-            // db.run(`INSERT INTO revolutions(revolutions, timestamp) VALUES(?, ?)`, [revolutions, new Date().toISOString()], function(err) {
-            //     if (err) {
-            //       return console.log(err.message);
-            //     }
-            //   });
-            // revolutions = newRevoulutions
-            // io.emit("revolutions", {
-            //     "revolutions": revolutions
-            // });
-        }
+        // let newRevoulutions = await getRevolutions()
+        // if (newRevoulutions !== revolutions) {
+        await update(io)
+        // db.run(`INSERT INTO revolutions(revolutions, timestamp) VALUES(?, ?)`, [revolutions, new Date().toISOString()], function(err) {
+        //     if (err) {
+        //       return console.log(err.message);
+        //     }
+        //   });
+        // revolutions = newRevoulutions
+        // io.emit("revolutions", {
+        //     "revolutions": revolutions
+        // });
+        //   }
 
         //     console.log({"revolutions" : this.revolutions, "speed": this.speed, "turnedOn": this.turnedOn})
 
@@ -142,7 +222,7 @@ modbusSocket.on('connect', async function () {
 
         //  console.log(`revolutions: ${revolutions}, speed: ${speed}, turnedOn: ${turnedOn}`)
 
-        await sleep(1000);
+        await sleep(5000);
     }
 
 
@@ -171,6 +251,7 @@ async function turnOff() {
 }
 
 async function setSpeed(speed) {
+    //speed += 0.5;
     return client.writeSingleRegister(768, speed);
 }
 
